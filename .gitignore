@@ -1,8 +1,28 @@
-# sioyun-sdk .gitignore
+# Binaries
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
 *.test
 *.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Dependencies
 vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Environment
+.env
+
+# Editor/IDE
 .idea/
 .vscode/
 *.swp
