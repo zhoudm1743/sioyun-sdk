@@ -1,4 +1,4 @@
-module sioyun-sdk
+module github.com/zhoudm1743/sioyun-sdk
 
 go 1.22
 

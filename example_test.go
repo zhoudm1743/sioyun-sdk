@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"time"
 
-	sioyun "sioyun-sdk"
+	sioyun "github.com/zhoudm1743/sioyun-sdk"
 )
 
 func ExampleWSClient() {
