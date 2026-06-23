@@ -53,12 +53,14 @@ func NewWSClient(cfg Config) *WSClient {
 func (w *WSClient) Connect(ctx context.Context) error {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := randomString(16)
-	signature := sign(w.cfg.SecretKey, "GET", "/ws", timestamp, nonce, "")
 
 	u, err := url.Parse(w.cfg.BaseURL)
 	if err != nil {
 		return err
 	}
+	wsPath := u.Path + "/ws"
+	// 签名使用完整路径，与后端 sign_auth.go ctx.Path() 对齐
+	signature := sign(w.cfg.SecretKey, "GET", wsPath, timestamp, nonce, "")
 	u.Path = u.Path + "/ws"
 
 	scheme := "ws"

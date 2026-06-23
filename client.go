@@ -11,6 +11,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -39,13 +40,14 @@ type Config struct {
 // Client 网关客户端。
 // 通过 New() 创建，内部维护连接池，线程安全。
 type Client struct {
-	cfg  Config
-	http *http.Client
-	base string
-	sms  *SmsService
-	pay  *PaymentService
-	pt   *PartnerService
-	app  *AppService
+	cfg        Config
+	http       *http.Client
+	base       string
+	pathPrefix string // BaseURL 的路径部分（如 /api/gateway/v1），用于签名时拼接完整路径
+	sms        *SmsService
+	pay        *PaymentService
+	pt         *PartnerService
+	app        *AppService
 }
 
 // New 创建网关客户端，初始化时发送测试请求验证连通性。
@@ -77,6 +79,10 @@ func New(cfg Config) (*Client, error) {
 			Timeout:   time.Duration(cfg.Timeout) * time.Second,
 			Transport: cfg.Transport,
 		},
+	}
+	// 从 BaseURL 提取路径前缀，用于签名时拼接完整请求路径
+	if u, err := url.Parse(cfg.BaseURL); err == nil {
+		c.pathPrefix = u.Path
 	}
 	c.sms = &SmsService{client: c}
 	c.pay = &PaymentService{client: c}
@@ -129,7 +135,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := randomString(16)
-	signature := sign(c.cfg.SecretKey, method, path, timestamp, nonce, bodyStr)
+	// 签名路径使用完整路径（pathPrefix + 路由路径），与后端 sign_auth.go ctx.Path() 对齐
+	signPath := c.pathPrefix + path
+	signature := sign(c.cfg.SecretKey, method, signPath, timestamp, nonce, bodyStr)
 
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -159,7 +167,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 		return fmt.Errorf("sioyun: unmarshal response: %w (body=%s)", err, string(respBytes))
 	}
 
-	if resp.StatusCode != 200 || apiResp.Code != 0 {
+	if resp.StatusCode != 200 || (apiResp.Code != 0 && apiResp.Code != 200) {
 		return &APIError{
 			HTTPStatus: resp.StatusCode,
 			Code:       apiResp.Code,
