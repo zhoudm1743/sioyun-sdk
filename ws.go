@@ -76,6 +76,7 @@ func (w *WSClient) Connect(ctx context.Context) error {
 	dialer := websocket.Dialer{
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: false},
 		HandshakeTimeout: 10 * time.Second,
+		Proxy:            nil, // 禁用环境变量代理，避免本地代理拦截 WS 连接
 	}
 
 	header := http.Header{}

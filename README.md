@@ -26,7 +26,7 @@ import (
 func main() {
     // 1. 创建客户端（自动验证连通性）
     client, err := sioyun.New(sioyun.Config{
-        BaseURL:   "https://www.sioyun.com/api/gateway/v1",
+        BaseURL:   "https://api.sioyun.com/api/gateway/v1",
         AccessKey: "ak_xxxxxxxxxxxxxxxxxxxxxxxx",
         SecretKey: "sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         Timeout:   30,
@@ -80,7 +80,7 @@ HMAC key   = SHA256(SecretKey)
 
 ```go
 client, err := sioyun.New(sioyun.Config{
-    BaseURL:        "https://www.sioyun.com/api/gateway/v1",
+    BaseURL:        "https://api.sioyun.com/api/gateway/v1",
     AccessKey:      "ak_xxx",
     SecretKey:      "sk_xxx",
     Timeout:        30,       // 秒，默认 30
@@ -267,7 +267,7 @@ if err != nil {
 
 ```go
 ws := sioyun.NewWSClient(sioyun.Config{
-    BaseURL:   "https://www.sioyun.com/api/gateway/v1",
+    BaseURL:   "https://api.sioyun.com/api/gateway/v1",
     AccessKey: os.Getenv("SIOYUN_AK"),
     SecretKey: os.Getenv("SIOYUN_SK"),
 })

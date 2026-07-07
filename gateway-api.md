@@ -1,7 +1,7 @@
 # 开放网关 API 接口文档
 
 **版本**：v1.0  
-**根路径**：`https://www.sioyun.com/api/gateway/v1`  
+**根路径**：`https://api.sioyun.com/api/gateway/v1`  
 **认证方式**：AK/SK + HMAC-SHA256 签名  
 **内容类型**：`application/json`
 

@@ -12,7 +12,7 @@ import (
 
 func ExampleWSClient() {
 	client, err := sioyun.New(sioyun.Config{
-		BaseURL:   "https://www.sioyun.com/api/gateway/v1",
+		BaseURL:   "https://api.sioyun.com/api/gateway/v1",
 		AccessKey: os.Getenv("SIOYUN_AK"),
 		SecretKey: os.Getenv("SIOYUN_SK"),
 	})
@@ -23,7 +23,7 @@ func ExampleWSClient() {
 
 	// 创建独立的 WS 客户端
 	ws := sioyun.NewWSClient(sioyun.Config{
-		BaseURL:   "https://www.sioyun.com/api/gateway/v1",
+		BaseURL:   "https://api.sioyun.com/api/gateway/v1",
 		AccessKey: os.Getenv("SIOYUN_AK"),
 		SecretKey: os.Getenv("SIOYUN_SK"),
 	})

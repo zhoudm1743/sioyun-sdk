@@ -20,7 +20,7 @@ import (
 
 // Config SDK 配置。
 type Config struct {
-	// BaseURL 网关根地址，如 https://www.sioyun.com/api/gateway/v1
+	// BaseURL 网关根地址，如 https://api.sioyun.com/api/gateway/v1
 	BaseURL string
 	// AccessKey 访问标识符（ak_ 前缀）
 	AccessKey string
@@ -31,8 +31,10 @@ type Config struct {
 	// CallbackSecret 回调验签所用的 SecretKey（用于 HandleCallback）
 	// 默认等于 SecretKey，如果业务方有独立的回调密钥可单独设置
 	CallbackSecret string
-	// Transport 自定义 HTTP Transport（nil 则用默认）
+	// Transport 自定义 HTTP Transport（nil 则用禁用代理的默认 Transport）
 	Transport http.RoundTripper
+	// SkipConnectivityCheck 跳过 New() 时的连通性探测
+	SkipConnectivityCheck bool
 }
 
 // ── 客户端 ───────────────────────────────────────────────────────────────
@@ -72,12 +74,17 @@ func New(cfg Config) (*Client, error) {
 		cfg.CallbackSecret = cfg.SecretKey
 	}
 
+	transport := cfg.Transport
+	if transport == nil {
+		transport = &http.Transport{Proxy: nil}
+	}
+
 	c := &Client{
 		cfg:  cfg,
 		base: cfg.BaseURL,
 		http: &http.Client{
 			Timeout:   time.Duration(cfg.Timeout) * time.Second,
-			Transport: cfg.Transport,
+			Transport: transport,
 		},
 	}
 	// 从 BaseURL 提取路径前缀，用于签名时拼接完整请求路径
@@ -89,15 +96,17 @@ func New(cfg Config) (*Client, error) {
 	c.pt = &PartnerService{client: c}
 	c.app = &AppService{client: c}
 
-	// 连通性验证
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var result APIResponse
-	if err := c.do(ctx, "GET", "/sms/balance", nil, &result); err != nil {
-		return nil, fmt.Errorf("sioyun: connectivity check failed: %w", err)
-	}
-	if result.Code != 0 {
-		return nil, fmt.Errorf("sioyun: connectivity check returned code=%d msg=%s", result.Code, result.Msg)
+	// 连通性验证（可选）
+	if !cfg.SkipConnectivityCheck {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		var result APIResponse
+		if err := c.do(ctx, "GET", "/sms/balance", nil, &result); err != nil {
+			return nil, fmt.Errorf("sioyun: connectivity check failed: %w", err)
+		}
+		if result.Code != 0 && result.Code != 200 {
+			return nil, fmt.Errorf("sioyun: connectivity check returned code=%d msg=%s", result.Code, result.Msg)
+		}
 	}
 
 	return c, nil

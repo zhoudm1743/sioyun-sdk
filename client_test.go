@@ -16,6 +16,59 @@ func TestSign(t *testing.T) {
 	t.Logf("signature: %s", sig)
 }
 
+func TestSignPathWithGatewayPrefix(t *testing.T) {
+	const (
+		secretKey  = "sk_test123456789012345678901234567890123456789012345678901234567890ab"
+		accessKey  = "ak_test12345678901234567890ab"
+		pathPrefix = "/api/gateway/v1"
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != pathPrefix+"/sms/balance" {
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+		}
+
+		ts := r.Header.Get("X-Timestamp")
+		nonce := r.Header.Get("X-Nonce")
+		gotSig := r.Header.Get("X-Signature")
+		wantSig := sign(secretKey, r.Method, r.URL.Path, ts, nonce, "")
+
+		if gotSig != wantSig {
+			t.Errorf("signature mismatch: got=%s want=%s (path=%s)", gotSig, wantSig, r.URL.Path)
+		}
+
+		resp := APIResponse{
+			Code: 200,
+			Msg:  "ok",
+			Data: map[string]interface{}{
+				"total_remaining": int64(100),
+				"packages":        []any{},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:   server.URL + pathPrefix,
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+		Timeout:   10,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	balance, err := client.SMS().Balance(context.Background())
+	if err != nil {
+		t.Fatalf("Balance() failed: %v", err)
+	}
+	if balance.TotalRemaining != 100 {
+		t.Errorf("unexpected total_remaining: %d", balance.TotalRemaining)
+	}
+}
+
 func TestClientSmsSend(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 验证请求头
