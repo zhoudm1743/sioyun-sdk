@@ -142,10 +142,11 @@ func TestClientPayCreate(t *testing.T) {
 	defer server.Close()
 
 	client, err := New(Config{
-		BaseURL:   server.URL,
-		AccessKey: "ak_test",
-		SecretKey: "sk_test",
-		Timeout:   10,
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
 	})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -157,12 +158,317 @@ func TestClientPayCreate(t *testing.T) {
 		PayMethod:   "wechat_jsapi",
 		Description: "test",
 		NotifyURL:   "https://example.com/cb",
+		OpenID:      "oTestOpenId",
 	})
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
 	if resp.GatewayTradeNo != "GATEWAY001" {
 		t.Errorf("unexpected gateway_trade_no: %s", resp.GatewayTradeNo)
+	}
+	jsapi, err := resp.WechatJsapiPayInfo()
+	if err != nil {
+		t.Fatalf("WechatJsapiPayInfo() failed: %v", err)
+	}
+	if jsapi.Package != "prepay_id=wx_test_001" {
+		t.Errorf("unexpected package: %s", jsapi.Package)
+	}
+}
+
+func TestClientPayCreateMethods(t *testing.T) {
+	cases := []struct {
+		method    string
+		payInfo   map[string]interface{}
+		check     func(t *testing.T, resp *OrderCreateResp)
+	}{
+		{
+			method: "wechat_jsapi",
+			payInfo: map[string]interface{}{
+				"appId": "wx_test", "timeStamp": "1718150400",
+				"package": "prepay_id=wx_test_001", "paySign": "sig",
+			},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				info, err := resp.WechatJsapiPayInfo()
+				if err != nil || info.Package == "" {
+					t.Fatalf("WechatJsapiPayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "wechat_h5",
+			payInfo: map[string]interface{}{"h5_url": "https://wx.test/h5"},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				url, err := resp.WechatH5PayInfo()
+				if err != nil || url == "" {
+					t.Fatalf("WechatH5PayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "wechat_native",
+			payInfo: map[string]interface{}{"code_url": "weixin://wxpay/bizpayurl?pr=abc"},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				url, err := resp.WechatNativePayInfo()
+				if err != nil || url == "" {
+					t.Fatalf("WechatNativePayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method: "wechat_app",
+			payInfo: map[string]interface{}{
+				"appId": "wx_test", "partnerId": "123", "prepayId": "wx_prepay",
+				"packageValue": "Sign=WXPay", "nonceStr": "n", "timeStamp": "1", "sign": "s",
+			},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				info, err := resp.WechatAppPayInfo()
+				if err != nil || info.PrepayID == "" {
+					t.Fatalf("WechatAppPayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "alipay_qr",
+			payInfo: map[string]interface{}{"qr_code": "https://qr.alipay.com/abc"},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				code, err := resp.AlipayQrPayInfo()
+				if err != nil || code == "" {
+					t.Fatalf("AlipayQrPayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "alipay_h5",
+			payInfo: map[string]interface{}{"h5_url": "https://openapi.alipay.com/gateway.do?..."},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				url, err := resp.AlipayH5PayInfo()
+				if err != nil || url == "" {
+					t.Fatalf("AlipayH5PayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "alipay_app",
+			payInfo: map[string]interface{}{"order_string": "app_id=2021&method=alipay.trade.app.pay"},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				s, err := resp.AlipayAppPayInfo()
+				if err != nil || s == "" {
+					t.Fatalf("AlipayAppPayInfo() failed: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				resp := APIResponse{
+					Code: 0,
+					Msg:  "success",
+					Data: map[string]interface{}{
+						"out_trade_no":     "ORDER001",
+						"gateway_trade_no": "GATEWAY001",
+						"pay_method":       tc.method,
+						"amount":           100,
+						"pay_info":         tc.payInfo,
+					},
+				}
+				json.NewEncoder(w).Encode(resp)
+			}))
+			defer server.Close()
+
+			client, err := New(Config{
+				BaseURL:               server.URL,
+				AccessKey:             "ak_test",
+				SecretKey:             "sk_test",
+				Timeout:               10,
+				SkipConnectivityCheck: true,
+			})
+			if err != nil {
+				t.Fatalf("New() failed: %v", err)
+			}
+
+			resp, err := client.Pay().Create(context.Background(), OrderCreateReq{
+				OutTradeNo:  "ORDER001",
+				Amount:      100,
+				PayMethod:   tc.method,
+				Description: "test",
+				NotifyURL:   "https://example.com/cb",
+			})
+			if err != nil {
+				t.Fatalf("Create() failed: %v", err)
+			}
+			if resp.PayMethod != tc.method {
+				t.Errorf("unexpected pay_method: %s", resp.PayMethod)
+			}
+			tc.check(t, resp)
+		})
+	}
+}
+
+func TestClientPayQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/pay/query/ORDER001" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_trade_no":     "ORDER001",
+				"gateway_trade_no": "GATEWAY001",
+				"status":           "SUCCESS",
+				"pay_method":       "wechat_jsapi",
+				"amount":           100,
+				"pay_amount":       100,
+				"pay_time":         int64(1718150500),
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().Query(context.Background(), OrderQueryReq{
+		OutTradeNo: "ORDER001",
+	})
+	if err != nil {
+		t.Fatalf("Query() failed: %v", err)
+	}
+	if resp.Status != "SUCCESS" {
+		t.Errorf("unexpected status: %s", resp.Status)
+	}
+}
+
+func TestClientPayClose(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pay/close" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_trade_no": "ORDER001",
+				"status":       "CLOSED",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().Close(context.Background(), OrderCloseReq{OutTradeNo: "ORDER001"})
+	if err != nil {
+		t.Fatalf("Close() failed: %v", err)
+	}
+	if resp.Status != "CLOSED" {
+		t.Errorf("unexpected status: %s", resp.Status)
+	}
+}
+
+func TestClientPayRefund(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pay/refund" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_refund_no": "REFUND001",
+				"refund_id":     "503000123456789",
+				"refund_amount": 50,
+				"status":        "PROCESSING",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().Refund(context.Background(), RefundCreateReq{
+		OutTradeNo:   "ORDER001",
+		OutRefundNo:  "REFUND001",
+		RefundAmount: 50,
+	})
+	if err != nil {
+		t.Fatalf("Refund() failed: %v", err)
+	}
+	if resp.RefundID != "503000123456789" {
+		t.Errorf("unexpected refund_id: %s", resp.RefundID)
+	}
+}
+
+func TestClientPayRefundQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pay/refund/query" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_refund_no": "REFUND001",
+				"refund_id":     "503000123456789",
+				"out_trade_no":  "ORDER001",
+				"refund_amount": 50,
+				"status":        "SUCCESS",
+				"refund_time":   int64(1718151000),
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().RefundQuery(context.Background(), RefundQueryReq{OutRefundNo: "REFUND001"})
+	if err != nil {
+		t.Fatalf("RefundQuery() failed: %v", err)
+	}
+	if resp.Status != "SUCCESS" {
+		t.Errorf("unexpected status: %s", resp.Status)
 	}
 }
 

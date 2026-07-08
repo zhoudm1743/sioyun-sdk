@@ -184,7 +184,7 @@ POST /api/gateway/v1/sms/send
   "params": {
     "code": "123456"
   },
-  "signature_name": "西奥科技"
+  "signature_name": "舟山市西奥科技"
 }
 ```
 
@@ -193,7 +193,7 @@ POST /api/gateway/v1/sms/send
 | phone | string | 是 | 目标手机号 |
 | template_code | string | 是 | 本地模板编码（平台短信管理后台创建） |
 | params | object | 否 | 模板变量键值对 |
-| signature_name | string | 否 | 指定签名名称，不传则用模板关联的签名 |
+| signature_name | string | 否 | 指定签名名称，不传则用模板关联的签名；可传纯文本如 `舟山市西奥科技`，也可传带【】的完整签名如 `【舟山市西奥科技】`，两者等价 |
 
 **成功响应：**
 
@@ -385,26 +385,14 @@ POST /api/gateway/v1/pay/create
 ### 4.2 查询订单
 
 ```
-POST /api/gateway/v1/pay/query
+GET /api/gateway/v1/pay/query/:out_trade_no
 ```
 
-**请求：**
+**路径参数：**
 
-```json
-{
-  "out_trade_no": "ORDER20260612001"
-}
-```
-
-或
-
-```json
-{
-  "gateway_trade_no": "GATEWAY20260612001"
-}
-```
-
-两个字段二选一，都传则以 `gateway_trade_no` 为准。
+| 参数 | 说明 |
+|------|------|
+| out_trade_no | 商户订单号（创建下单时传入的 `out_trade_no`） |
 
 **成功响应：**
 

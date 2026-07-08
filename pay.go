@@ -1,6 +1,11 @@
 package sioyun
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+)
 
 // PaymentService 支付服务。
 type PaymentService struct {
@@ -20,6 +25,8 @@ type OrderCreateReq struct {
 	SubMchID      string `json:"sub_mchid,omitempty"`       // 指定子商户号
 	Attach        string `json:"attach,omitempty"`          // 附加数据（回调原样返回）
 	ExpireMinutes int    `json:"expire_minutes,omitempty"`  // 过期分钟数
+	ClientIP      string `json:"client_ip,omitempty"`       // 条件：wechat_h5 建议传入
+	ReturnURL     string `json:"return_url,omitempty"`      // 可选：alipay_h5 支付完成跳转
 }
 
 // OrderCreateResp 支付下单响应。
@@ -29,6 +36,105 @@ type OrderCreateResp struct {
 	PayMethod      string                 `json:"pay_method"`
 	Amount         int64                  `json:"amount"`
 	PayInfo        map[string]interface{} `json:"pay_info"`
+}
+
+// WechatJsapiPayInfo 微信 JSAPI 调起支付参数（用于 wx.requestPayment / WeixinJSBridge）。
+type WechatJsapiPayInfo struct {
+	AppID     string `json:"appId"`
+	TimeStamp string `json:"timeStamp"`
+	NonceStr  string `json:"nonceStr"`
+	Package   string `json:"package"`
+	SignType  string `json:"signType"`
+	PaySign   string `json:"paySign"`
+}
+
+// WechatJsapiPayInfo 解析 wechat_jsapi 下单响应中的 pay_info。
+func (r *OrderCreateResp) WechatJsapiPayInfo() (*WechatJsapiPayInfo, error) {
+	if r == nil || r.PayInfo == nil {
+		return nil, fmt.Errorf("sioyun: pay_info is empty")
+	}
+	data, err := json.Marshal(r.PayInfo)
+	if err != nil {
+		return nil, fmt.Errorf("sioyun: marshal pay_info: %w", err)
+	}
+	var info WechatJsapiPayInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return nil, fmt.Errorf("sioyun: unmarshal pay_info: %w", err)
+	}
+	if info.Package == "" {
+		return nil, fmt.Errorf("sioyun: pay_info.package is required for wechat_jsapi")
+	}
+	return &info, nil
+}
+
+// WechatH5PayInfo 解析 wechat_h5 下单响应中的 pay_info。
+func (r *OrderCreateResp) WechatH5PayInfo() (string, error) {
+	return r.payInfoString("h5_url", "wechat_h5")
+}
+
+// WechatNativePayInfo 解析 wechat_native 下单响应中的 pay_info。
+func (r *OrderCreateResp) WechatNativePayInfo() (string, error) {
+	return r.payInfoString("code_url", "wechat_native")
+}
+
+// WechatAppPayInfo 微信 APP 调起支付参数。
+type WechatAppPayInfo struct {
+	AppID        string `json:"appId"`
+	PartnerID    string `json:"partnerId"`
+	PrepayID     string `json:"prepayId"`
+	PackageValue string `json:"packageValue"`
+	NonceStr     string `json:"nonceStr"`
+	TimeStamp    string `json:"timeStamp"`
+	Sign         string `json:"sign"`
+}
+
+// WechatAppPayInfo 解析 wechat_app 下单响应中的 pay_info。
+func (r *OrderCreateResp) WechatAppPayInfo() (*WechatAppPayInfo, error) {
+	if r == nil || r.PayInfo == nil {
+		return nil, fmt.Errorf("sioyun: pay_info is empty")
+	}
+	data, err := json.Marshal(r.PayInfo)
+	if err != nil {
+		return nil, fmt.Errorf("sioyun: marshal pay_info: %w", err)
+	}
+	var info WechatAppPayInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return nil, fmt.Errorf("sioyun: unmarshal pay_info: %w", err)
+	}
+	if info.PrepayID == "" {
+		return nil, fmt.Errorf("sioyun: pay_info.prepayId is required for wechat_app")
+	}
+	return &info, nil
+}
+
+// AlipayQrPayInfo 解析 alipay_qr 下单响应中的 pay_info。
+func (r *OrderCreateResp) AlipayQrPayInfo() (string, error) {
+	return r.payInfoString("qr_code", "alipay_qr")
+}
+
+// AlipayH5PayInfo 解析 alipay_h5 下单响应中的 pay_info。
+func (r *OrderCreateResp) AlipayH5PayInfo() (string, error) {
+	return r.payInfoString("h5_url", "alipay_h5")
+}
+
+// AlipayAppPayInfo 解析 alipay_app 下单响应中的 pay_info。
+func (r *OrderCreateResp) AlipayAppPayInfo() (string, error) {
+	return r.payInfoString("order_string", "alipay_app")
+}
+
+func (r *OrderCreateResp) payInfoString(key, method string) (string, error) {
+	if r == nil || r.PayInfo == nil {
+		return "", fmt.Errorf("sioyun: pay_info is empty")
+	}
+	v, ok := r.PayInfo[key]
+	if !ok {
+		return "", fmt.Errorf("sioyun: pay_info.%s is required for %s", key, method)
+	}
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return "", fmt.Errorf("sioyun: pay_info.%s is required for %s", key, method)
+	}
+	return s, nil
 }
 
 // Create 创建支付订单。
@@ -61,10 +167,20 @@ type OrderQueryResp struct {
 	Attach         string `json:"attach"`
 }
 
-// Query 查询订单状态。
+// Query 查询订单状态（GET /pay/query/:out_trade_no）。
 func (p *PaymentService) Query(ctx context.Context, req OrderQueryReq) (*OrderQueryResp, error) {
+	var path string
+	switch {
+	case req.OutTradeNo != "":
+		path = "/pay/query/" + url.PathEscape(req.OutTradeNo)
+	case req.GatewayTradeNo != "":
+		return nil, fmt.Errorf("sioyun: gateway_trade_no query is not supported yet")
+	default:
+		return nil, fmt.Errorf("sioyun: out_trade_no is required")
+	}
+
 	var resp OrderQueryResp
-	if err := p.client.do(ctx, "POST", "/pay/query", req, &resp); err != nil {
+	if err := p.client.do(ctx, "GET", path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

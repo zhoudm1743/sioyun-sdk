@@ -60,7 +60,11 @@ func main() {
     if err != nil {
         panic(err)
     }
-    fmt.Printf("下单成功, prepay_id=%s\n", order.PayInfo["package"])
+    jsapi, err := order.WechatJsapiPayInfo()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("下单成功, prepay_id=%s\n", jsapi.Package)
 }
 ```
 
@@ -136,7 +140,7 @@ resp, err := client.Pay().Create(ctx, sioyun.OrderCreateReq{
     OpenID:      "oUpF8uMu...", // JSAPI 必填
 })
 // resp.GatewayTradeNo - 网关流水号
-// resp.PayInfo        - 调起支付所需参数
+// resp.PayInfo        - 调起支付所需参数（wechat_jsapi 可用 resp.WechatJsapiPayInfo() 解析）
 ```
 
 支持的支付方式：`wechat_jsapi` | `wechat_h5` | `wechat_native` | `wechat_app` | `alipay_qr` | `alipay_h5` | `alipay_app`
@@ -145,9 +149,9 @@ resp, err := client.Pay().Create(ctx, sioyun.OrderCreateReq{
 
 ```go
 resp, err := client.Pay().Query(ctx, sioyun.OrderQueryReq{
-    OutTradeNo: "ORDER001",
+    OutTradeNo: "ORDER001", // GET /pay/query/:out_trade_no
 })
-// resp.Status - PENDING / SUCCESS / CLOSED / REFUND / REFUND_PART
+// resp.Status - PENDING / SUCCESS / CLOSED
 ```
 
 **关闭订单**
