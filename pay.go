@@ -18,7 +18,7 @@ type PaymentService struct {
 type OrderCreateReq struct {
 	OutTradeNo    string `json:"out_trade_no"`              // 必填：商户订单号（唯一）
 	Amount        int64  `json:"amount"`                    // 必填：金额（分）
-	PayMethod     string `json:"pay_method"`                // 必填：wechat_jsapi / wechat_h5 / wechat_native / alipay_qr / alipay_h5 / wechat_app / alipay_app
+	PayMethod     string `json:"pay_method"`                // 必填：wechat_jsapi / wechat_h5 / wechat_native / wechat_app / alipay_qr / alipay_h5 / alipay_app / unionpay_qr / unionpay_mini / unionpay_jsapi
 	Description   string `json:"description"`               // 必填：商品描述
 	NotifyURL     string `json:"notify_url"`                // 必填：支付结果回调地址
 	OpenID        string `json:"openid,omitempty"`          // 条件：微信 jsapi 支付必填
@@ -120,6 +120,39 @@ func (r *OrderCreateResp) AlipayH5PayInfo() (string, error) {
 // AlipayAppPayInfo 解析 alipay_app 下单响应中的 pay_info。
 func (r *OrderCreateResp) AlipayAppPayInfo() (string, error) {
 	return r.payInfoString("order_string", "alipay_app")
+}
+
+// ── 银联支付 pay_info 解析 ──────────────────────────────────────────────────
+
+// UnionPayQrPayInfo 解析 unionpay_qr 下单响应中的 pay_info (C扫B 二维码)。
+func (r *OrderCreateResp) UnionPayQrPayInfo() (string, error) {
+	return r.payInfoString("qr_code", "unionpay_qr")
+}
+
+// UnionPayMiniPayInfo 小程序支付调起参数。
+type UnionPayMiniPayInfo struct {
+	MiniPayRequest map[string]interface{} `json:"mini_pay_request"`
+	SeqID          string                 `json:"seq_id"`
+	MerOrderID     string                 `json:"mer_order_id"`
+}
+
+// UnionPayMiniPayInfo 解析 unionpay_mini / unionpay_jsapi 下单响应中的 pay_info。
+func (r *OrderCreateResp) UnionPayMiniPayInfo() (*UnionPayMiniPayInfo, error) {
+	if r == nil || r.PayInfo == nil {
+		return nil, fmt.Errorf("sioyun: pay_info is empty")
+	}
+	data, err := json.Marshal(r.PayInfo)
+	if err != nil {
+		return nil, fmt.Errorf("sioyun: marshal pay_info: %w", err)
+	}
+	var info UnionPayMiniPayInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return nil, fmt.Errorf("sioyun: unmarshal pay_info: %w", err)
+	}
+	if info.MiniPayRequest == nil {
+		return nil, fmt.Errorf("sioyun: pay_info.mini_pay_request is required for unionpay_mini/jsapi")
+	}
+	return &info, nil
 }
 
 func (r *OrderCreateResp) payInfoString(key, method string) (string, error) {

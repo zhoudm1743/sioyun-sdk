@@ -330,6 +330,9 @@ POST /api/gateway/v1/pay/create
 | `alipay_qr` | 支付宝扫码（当面付） | - |
 | `alipay_h5` | 支付宝手机网页 | - |
 | `alipay_app` | 支付宝 APP 支付 | - |
+| `unionpay_qr` | 银联 C扫B 扫码支付 | - |
+| `unionpay_mini` | 银联 小程序支付（微信渠道） | openid |
+| `unionpay_jsapi` | 银联 公众号 JSAPI 支付 | openid |
 
 **成功响应：**
 
@@ -371,6 +374,9 @@ POST /api/gateway/v1/pay/create
 - **alipay_qr**：qr_code（二维码内容）
 - **alipay_h5**：h5_url（直接跳转）
 - **alipay_app**：order_string（传给 APP SDK）
+- **unionpay_qr**：qr_code（二维码 URL，用户扫码后支付）、bill_no（账单号）、qr_code_id（二维码 ID）
+- **unionpay_mini**：mini_pay_request（含 appId/sign/prepayId 等，用于 `wx.requestPayment`）、seq_id（平台流水号）
+- **unionpay_jsapi**：同 unionpay_mini
 
 **常见错误：**
 
