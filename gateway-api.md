@@ -18,7 +18,11 @@
    - 4.3 [关闭订单](#43-关闭订单)
    - 4.4 [申请退款](#44-申请退款)
    - 4.5 [查询退款](#45-查询退款)
-   - 4.6 [支付回调通知](#46-支付回调通知)
+   - 4.6 [发起分账](#46-发起分账)
+   - 4.7 [查询分账](#47-查询分账)
+   - 4.8 [分账回退](#48-分账回退)
+   - 4.9 [查询剩余待分金额](#49-查询剩余待分金额)
+   - 4.10 [支付回调通知](#410-支付回调通知)
 5. [进件接口](#5-进件接口)
 6. [应用接口](#6-应用接口)
 7. [回调通知接口](#7-回调通知接口)
@@ -318,6 +322,8 @@ POST /api/gateway/v1/pay/create
 | sub_mchid | string | 否 | 指定子商户号（不传使用最近一个进件成功的商户） |
 | attach | string | 否 | 附加数据（回调时原样返回，最长 127） |
 | expire_minutes | int | 否 | 订单过期分钟数（默认 15，最大 120） |
+| auto_split | bool | 否 | 支付成功后自动分账（按预配置接收方与默认比例，微信/支付宝生效；银联在下单时直接分账） |
+| sub_orders | array | 否 | 银联下单分账子商户列表（仅银联分账使用），元素：`mid`/`mer_order_id`/`total_amount` |
 
 **支付方式 `pay_method`：**
 
@@ -530,7 +536,135 @@ POST /api/gateway/v1/pay/refund/query
 
 ---
 
-### 4.6 支付回调通知
+### 4.6 发起分账
+
+```
+POST /api/gateway/v1/pay/split
+```
+
+**前置条件：** 订单已支付成功，且已通过管理后台配置该渠道的分账接收方。
+
+**请求：**
+
+```json
+{
+  "out_trade_no": "ORDER20260612001",
+  "out_profit_share_no": "SPLIT20260612001",
+  "amount": 100
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| out_trade_no | string | 是 | 原商户订单号 |
+| out_profit_share_no | string | 是 | 商户分账单号（唯一） |
+| amount | int64 | 否 | 本次分账总金额（分）。不传则按订单实付金额全额分账 |
+
+> 分账明细按「预配置接收方 × 默认比例」自动计算。默认比例为 0.03%（万分比 3），可在管理后台调整。
+
+**成功响应：**
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "out_profit_share_no": "SPLIT20260612001",
+    "channel": "wechat",
+    "amount": 100,
+    "status": "PROCESSING",
+    "receivers": [
+      { "receiver_type": "MERCHANT_ID", "account": "1900000109", "amount": 3, "description": "", "result": "", "fail_reason": "" }
+    ]
+  }
+}
+```
+
+> 微信分账为异步，请求成功返回 `PROCESSING`，最终结果通过回调 + `payment.profit_share` 事件或查询接口获取；支付宝/银联分账为同步，直接返回 `SUCCESS`。
+
+---
+
+### 4.7 查询分账
+
+```
+GET /api/gateway/v1/pay/split/query/:out_profit_share_no
+```
+
+**成功响应：**
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "out_profit_share_no": "SPLIT20260612001",
+    "out_trade_no": "ORDER20260612001",
+    "channel": "wechat",
+    "amount": 100,
+    "status": "SUCCESS",
+    "channel_record_no": "3008450740201411110007820472",
+    "receivers": [
+      { "receiver_type": "MERCHANT_ID", "account": "1900000109", "amount": 3, "description": "", "result": "SUCCESS", "fail_reason": "" }
+    ],
+    "profit_share_time": 1718151000
+  }
+}
+```
+
+---
+
+### 4.8 分账回退（仅微信）
+
+```
+POST /api/gateway/v1/pay/split/return
+```
+
+**请求：**
+
+```json
+{
+  "out_trade_no": "ORDER20260612001",
+  "out_profit_share_no": "SPLIT20260612001",
+  "out_return_no": "RETURN20260612001",
+  "return_amount": 3,
+  "description": "分账回退"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| out_trade_no | string | 是 | 原商户订单号 |
+| out_profit_share_no | string | 是 | 原分账单号 |
+| out_return_no | string | 是 | 回退单号（唯一） |
+| return_amount | int64 | 是 | 回退金额（分） |
+| description | string | 否 | 回退原因 |
+
+> 仅微信渠道支持分账回退，且仅已完成的分账可回退。
+
+---
+
+### 4.9 查询剩余待分金额（仅微信）
+
+```
+GET /api/gateway/v1/pay/split/unsplit_amount/:out_trade_no
+```
+
+**成功响应：**
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "out_trade_no": "ORDER20260612001",
+    "unsplit_amount": 97
+  }
+}
+```
+
+---
+
+### 4.10 支付回调通知
 
 支付成功后，网关会主动将支付结果推送给合作伙伴。合作伙伴无需轮询查询。通知通过两种互补渠道同时送达：
 
@@ -879,6 +1013,35 @@ func VerifySignature(secretKey, signature, body string) bool {
   "refund_id": "503000123456789",
   "refund_amount": 50,
   "fail_reason": "账户余额不足"
+}
+```
+
+#### `payment.profit_share` — 分账完成
+
+```json
+{
+  "out_profit_share_no": "SPLIT20260612001",
+  "out_trade_no": "ORDER20260612001",
+  "channel": "wechat",
+  "amount": 100,
+  "status": "SUCCESS",
+  "receivers": [
+    { "receiver_type": "MERCHANT_ID", "account": "1900000109", "amount": 3, "description": "", "result": "SUCCESS", "fail_reason": "" }
+  ],
+  "profit_share_time": 1718151000
+}
+```
+
+#### `payment.profit_share.fail` — 分账失败
+
+```json
+{
+  "out_profit_share_no": "SPLIT20260612001",
+  "out_trade_no": "ORDER20260612001",
+  "channel": "wechat",
+  "amount": 100,
+  "status": "FAIL",
+  "fail_reason": "分账接收方账户异常"
 }
 ```
 
