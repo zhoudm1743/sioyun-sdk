@@ -15,17 +15,17 @@ type ApplymentSubmitReq struct {
 	MerchantName string                 `json:"merchant_name"` // 商户简称
 	SubjectType  string                 `json:"subject_type"`  // 主体类型（微信: ENTERPRISE/INDIVIDUAL/...）
 	NotifyURL    string                 `json:"notify_url,omitempty"`
-	FormData     map[string]interface{} `json:"form_data"`     // 进件表单（结构按 channel 不同）
+	FormData     map[string]interface{} `json:"form_data"` // 进件表单（结构按 channel 不同）
 }
 
 // ApplymentSubmitResp 进件提交响应。
 type ApplymentSubmitResp struct {
-	ApplyID      string `json:"apply_id"`
-	ApplymentID  int64  `json:"applyment_id"`
-	Channel      string `json:"channel"`
-	Status       string `json:"status"` // submitted / signing / rejected / finished
-	SignURL      string `json:"sign_url"`
-	SubmittedAt  int64  `json:"submitted_at"`
+	ApplyID     string `json:"apply_id"`
+	ApplymentID int64  `json:"applyment_id"`
+	Channel     string `json:"channel"`
+	Status      string `json:"status"` // submitted / signing / rejected / finished
+	SignURL     string `json:"sign_url"`
+	SubmittedAt int64  `json:"submitted_at"`
 }
 
 // Submit 提交进件申请。
@@ -48,7 +48,7 @@ type ApplymentQueryResp struct {
 	ApplymentState    string        `json:"applyment_state"`
 	ApplymentStateMsg string        `json:"applyment_state_msg"`
 	SubMchID          string        `json:"sub_mchid"` // 微信子商户号
-	SMID              string        `json:"smid"`       // 支付宝 smid
+	SMID              string        `json:"smid"`      // 支付宝 smid
 	SignURL           string        `json:"sign_url"`
 	AuditDetail       []AuditDetail `json:"audit_detail"`
 	SubmittedAt       int64         `json:"submitted_at"`

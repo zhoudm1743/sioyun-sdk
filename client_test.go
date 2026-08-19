@@ -177,9 +177,9 @@ func TestClientPayCreate(t *testing.T) {
 
 func TestClientPayCreateMethods(t *testing.T) {
 	cases := []struct {
-		method    string
-		payInfo   map[string]interface{}
-		check     func(t *testing.T, resp *OrderCreateResp)
+		method  string
+		payInfo map[string]interface{}
+		check   func(t *testing.T, resp *OrderCreateResp)
 	}{
 		{
 			method: "wechat_jsapi",
@@ -469,6 +469,189 @@ func TestClientPayRefundQuery(t *testing.T) {
 	}
 	if resp.Status != "SUCCESS" {
 		t.Errorf("unexpected status: %s", resp.Status)
+	}
+}
+
+func TestClientPaySplit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pay/split" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_profit_share_no": "SPLIT001",
+				"channel":             "wechat",
+				"amount":              int64(100),
+				"status":              "PROCESSING",
+				"receivers": []map[string]interface{}{
+					{
+						"receiver_type": "MERCHANT_ID",
+						"account":       "1900000109",
+						"amount":        int64(3),
+						"description":   "",
+						"result":        "",
+						"fail_reason":   "",
+					},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().Split(context.Background(), SplitCreateReq{
+		OutTradeNo:       "ORDER001",
+		OutProfitShareNo: "SPLIT001",
+		Amount:           100,
+	})
+	if err != nil {
+		t.Fatalf("Split() failed: %v", err)
+	}
+	if resp.Status != "PROCESSING" {
+		t.Errorf("unexpected status: %s", resp.Status)
+	}
+	if len(resp.Receivers) != 1 || resp.Receivers[0].Account != "1900000109" {
+		t.Errorf("unexpected receivers: %+v", resp.Receivers)
+	}
+}
+
+func TestClientPaySplitQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/pay/split/query/SPLIT001" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_profit_share_no": "SPLIT001",
+				"out_trade_no":        "ORDER001",
+				"channel":             "wechat",
+				"amount":              int64(100),
+				"status":              "SUCCESS",
+				"channel_record_no":   "3008450740201411110007820472",
+				"receivers":           []map[string]interface{}{},
+				"profit_share_time":   int64(1718151000),
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().SplitQuery(context.Background(), "SPLIT001")
+	if err != nil {
+		t.Fatalf("SplitQuery() failed: %v", err)
+	}
+	if resp.Status != "SUCCESS" {
+		t.Errorf("unexpected status: %s", resp.Status)
+	}
+	if resp.ChannelRecordNo != "3008450740201411110007820472" {
+		t.Errorf("unexpected channel_record_no: %s", resp.ChannelRecordNo)
+	}
+}
+
+func TestClientPaySplitReturn(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pay/split/return" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_return_no": "RETURN001",
+				"return_no":     "3008450740201411110007820473",
+				"return_amount": int64(3),
+				"status":        "PROCESSING",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().SplitReturn(context.Background(), SplitReturnReq{
+		OutTradeNo:       "ORDER001",
+		OutProfitShareNo: "SPLIT001",
+		OutReturnNo:      "RETURN001",
+		ReturnAmount:     3,
+	})
+	if err != nil {
+		t.Fatalf("SplitReturn() failed: %v", err)
+	}
+	if resp.Status != "PROCESSING" {
+		t.Errorf("unexpected status: %s", resp.Status)
+	}
+}
+
+func TestClientPaySplitUnsplitAmount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/pay/split/unsplit_amount/ORDER001" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		resp := APIResponse{
+			Code: 0,
+			Msg:  "success",
+			Data: map[string]interface{}{
+				"out_trade_no":   "ORDER001",
+				"unsplit_amount": int64(97),
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		BaseURL:               server.URL,
+		AccessKey:             "ak_test",
+		SecretKey:             "sk_test",
+		Timeout:               10,
+		SkipConnectivityCheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	resp, err := client.Pay().SplitUnsplitAmount(context.Background(), "ORDER001")
+	if err != nil {
+		t.Fatalf("SplitUnsplitAmount() failed: %v", err)
+	}
+	if resp.UnsplitAmount != 97 {
+		t.Errorf("unexpected unsplit_amount: %d", resp.UnsplitAmount)
 	}
 }
 
