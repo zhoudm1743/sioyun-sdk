@@ -257,6 +257,36 @@ func TestClientPayCreateMethods(t *testing.T) {
 				}
 			},
 		},
+		{
+			method:  "wechat_micropay",
+			payInfo: map[string]interface{}{"trade_state": "SUCCESS", "transaction_id": "420000001", "pay_amount": 100, "pay_time": int64(1718150500)},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				info, err := resp.MicroPayInfo()
+				if err != nil || info.TradeState != "SUCCESS" {
+					t.Fatalf("MicroPayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "alipay_micropay",
+			payInfo: map[string]interface{}{"trade_state": "SUCCESS", "trade_no": "2026061200001", "pay_amount": 100, "pay_time": int64(1718150500)},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				info, err := resp.MicroPayInfo()
+				if err != nil || info.TradeNo == "" {
+					t.Fatalf("MicroPayInfo() failed: %v", err)
+				}
+			},
+		},
+		{
+			method:  "unionpay_micropay",
+			payInfo: map[string]interface{}{"trade_state": "SUCCESS", "target_order_id": "2026061200002", "pay_amount": 100, "pay_time": int64(1718150500)},
+			check: func(t *testing.T, resp *OrderCreateResp) {
+				info, err := resp.MicroPayInfo()
+				if err != nil || info.TradeState != "SUCCESS" {
+					t.Fatalf("MicroPayInfo() failed: %v", err)
+				}
+			},
+		},
 	}
 
 	for _, tc := range cases {

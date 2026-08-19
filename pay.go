@@ -18,7 +18,7 @@ type PaymentService struct {
 type OrderCreateReq struct {
 	OutTradeNo    string                `json:"out_trade_no"`             // 必填：商户订单号（唯一）
 	Amount        int64                 `json:"amount"`                   // 必填：金额（分）
-	PayMethod     string                `json:"pay_method"`               // 必填：wechat_jsapi / wechat_h5 / wechat_native / wechat_app / alipay_qr / alipay_h5 / alipay_app / unionpay_qr / unionpay_mini / unionpay_jsapi
+	PayMethod     string                `json:"pay_method"`               // 必填：wechat_jsapi / wechat_h5 / wechat_native / wechat_app / wechat_micropay / alipay_qr / alipay_h5 / alipay_app / alipay_micropay / unionpay_qr / unionpay_mini / unionpay_jsapi / unionpay_micropay
 	Description   string                `json:"description"`              // 必填：商品描述
 	NotifyURL     string                `json:"notify_url"`               // 必填：支付结果回调地址
 	OpenID        string                `json:"openid,omitempty"`         // 条件：微信 jsapi 支付必填
@@ -27,6 +27,7 @@ type OrderCreateReq struct {
 	ExpireMinutes int                   `json:"expire_minutes,omitempty"` // 过期分钟数
 	ClientIP      string                `json:"client_ip,omitempty"`      // 条件：wechat_h5 建议传入
 	ReturnURL     string                `json:"return_url,omitempty"`     // 可选：alipay_h5 支付完成跳转
+	AuthCode      string                `json:"auth_code,omitempty"`      // 条件：B扫C（付款码支付）必填，用户付款码/被扫条码
 	AutoSplit     bool                  `json:"auto_split,omitempty"`     // 可选：支付成功后自动分账（微信/支付宝按预配置接收方分账；银联在下单时直接分账）
 	SubOrders     []ProfitShareSubOrder `json:"sub_orders,omitempty"`     // 可选：银联下单分账子商户列表（仅 unionpay_mini/unionpay_jsapi 分账使用）
 }
@@ -160,6 +161,39 @@ func (r *OrderCreateResp) UnionPayMiniPayInfo() (*UnionPayMiniPayInfo, error) {
 	}
 	if info.MiniPayRequest == nil {
 		return nil, fmt.Errorf("sioyun: pay_info.mini_pay_request is required for unionpay_mini/jsapi")
+	}
+	return &info, nil
+}
+
+// ── B扫C（付款码支付）pay_info 解析 ─────────────────────────────────────────
+
+// MicroPayInfo 付款码支付（B扫C）同步扣款结果。
+// 网关下单接口返回的 pay_info 即同步扣款结果，各渠道字段略有差异，均映射到此结构。
+type MicroPayInfo struct {
+	TradeState    string `json:"trade_state"`     // SUCCESS：同步扣款成功
+	TransactionID string `json:"transaction_id"`  // 微信渠道交易流水号
+	TradeNo       string `json:"trade_no"`        // 支付宝渠道交易流水号
+	TargetOrderID string `json:"target_order_id"` // 银联渠道交易流水号
+	SeqID         string `json:"seq_id"`          // 银联平台流水号
+	PayAmount     int64  `json:"pay_amount"`      // 实付金额（分）
+	PayTime       int64  `json:"pay_time"`        // 支付完成时间（Unix 秒）
+}
+
+// MicroPayInfo 解析 wechat_micropay / alipay_micropay / unionpay_micropay 下单响应中的 pay_info。
+func (r *OrderCreateResp) MicroPayInfo() (*MicroPayInfo, error) {
+	if r == nil || r.PayInfo == nil {
+		return nil, fmt.Errorf("sioyun: pay_info is empty")
+	}
+	data, err := json.Marshal(r.PayInfo)
+	if err != nil {
+		return nil, fmt.Errorf("sioyun: marshal pay_info: %w", err)
+	}
+	var info MicroPayInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return nil, fmt.Errorf("sioyun: unmarshal pay_info: %w", err)
+	}
+	if info.TradeState != "SUCCESS" {
+		return nil, fmt.Errorf("sioyun: 付款码支付未成功 trade_state=%s", info.TradeState)
 	}
 	return &info, nil
 }

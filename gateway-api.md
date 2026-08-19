@@ -322,6 +322,7 @@ POST /api/gateway/v1/pay/create
 | sub_mchid | string | 否 | 指定子商户号（不传使用最近一个进件成功的商户） |
 | attach | string | 否 | 附加数据（回调时原样返回，最长 127） |
 | expire_minutes | int | 否 | 订单过期分钟数（默认 15，最大 120） |
+| auth_code | string | 条件 | **付款码支付（B扫C）必填**，用户付款码/被扫条码 |
 | auto_split | bool | 否 | 支付成功后自动分账（按预配置接收方与默认比例，微信/支付宝生效；银联在下单时直接分账） |
 | sub_orders | array | 否 | 银联下单分账子商户列表（仅银联分账使用），元素：`mid`/`mer_order_id`/`total_amount` |
 
@@ -331,14 +332,24 @@ POST /api/gateway/v1/pay/create
 |----|------|---------|
 | `wechat_jsapi` | 微信 JSAPI（公众号/小程序支付） | openid |
 | `wechat_h5` | 微信 H5 支付 | - |
-| `wechat_native` | 微信 Native（扫码） | - |
+| `wechat_native` | 微信 Native（扫码，C扫B） | - |
 | `wechat_app` | 微信 APP 支付 | - |
-| `alipay_qr` | 支付宝扫码（当面付） | - |
+| `alipay_qr` | 支付宝扫码（当面付，C扫B） | - |
 | `alipay_h5` | 支付宝手机网页 | - |
 | `alipay_app` | 支付宝 APP 支付 | - |
 | `unionpay_qr` | 银联 C扫B 扫码支付 | - |
 | `unionpay_mini` | 银联 小程序支付（微信渠道） | openid |
 | `unionpay_jsapi` | 银联 公众号 JSAPI 支付 | openid |
+| `wechat_micropay` | 微信付款码支付（B扫C，商户扫用户） | auth_code |
+| `alipay_micropay` | 支付宝付款码支付（B扫C） | auth_code |
+| `unionpay_micropay` | 银联付款码支付（B扫C，反扫） | auth_code |
+
+**B扫C（付款码支付）说明：**
+
+- 以上 `*_micropay` 方式为**商户收银系统扫码枪扫用户付款码**，调用 `/pay/create` 时传入 `auth_code`（用户付款码/被扫条码）。
+- **同步扣款**：微信/支付宝/银联均在请求内返回支付结果，支付成功后网关直接更新订单为 `SUCCESS`，无需等待异步回调（同时也会触发合作伙伴 `payment.success` 回调通知）。
+- 若用户在扫码后未及时输入支付密码（微信返回 `USERPAYING`、银联返回 `USERPAYING`），网关会轮询等待约 12 秒；超时未完成则失败（微信自动撤销原交易），请提示用户重新出示付款码。
+- `pay_info` 返回同步扣款结果，字段：`trade_state`（SUCCESS）、`transaction_id`/`trade_no`/`target_order_id`（渠道流水号）、`pay_amount`（实付分）、`pay_time`。
 
 **成功响应：**
 
